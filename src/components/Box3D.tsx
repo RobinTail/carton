@@ -157,9 +157,6 @@ function Frame({ model }: { model: BoxModel }) {
       enablePan={false}
       enableDamping
       dampingFactor={0.08}
-      // Stop short of the poles so the box never flips through its own floor.
-      minPolarAngle={0.05}
-      maxPolarAngle={Math.PI / 2 + 0.35}
     />
   );
 }
