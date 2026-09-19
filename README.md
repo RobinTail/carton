@@ -3,6 +3,8 @@
 Generates the flat cut-and-fold layout for a regular slotted container (RSC) from the
 interior dimensions you need to protect, and exports it as a 1:1 millimetre SVG.
 
+![Carton layout demo](demo.png)
+
 ```sh
 pnpm install
 pnpm dev
