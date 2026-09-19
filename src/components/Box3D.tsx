@@ -1,27 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  Canvas,
-  extend,
-  useFrame,
-  useStore,
-  type ThreeElement,
-} from "@react-three/fiber";
-import { PerspectiveCamera, Vector3 } from "three";
-import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { Canvas } from "@react-three/fiber";
+import { CameraControls, CameraControlsImpl } from "@react-three/drei";
+import { Sphere, Vector3, type PerspectiveCamera } from "three";
 import type { BoxParams, Layout } from "../lib/geometry.ts";
 import { buildModel, type BoxModel, type Slab } from "../lib/model3d.ts";
 import { PreviewNotice } from "./PreviewNotice.tsx";
 import "./Box3D.css";
 
-// Pulled in directly rather than via @react-three/drei, which would be a whole
-// dependency for one control.
-extend({ OrbitControls });
-
-declare module "@react-three/fiber" {
-  interface ThreeElements {
-    orbitControls: ThreeElement<typeof OrbitControls>;
-  }
-}
+const ACTION = CameraControlsImpl.ACTION;
 
 const SURFACE = {
   outer: { color: "#cda271", opacity: 1, roughness: 0.85 },
@@ -31,8 +17,11 @@ const SURFACE = {
 } as const;
 
 const FOV = 40;
-/** Direction the camera sits in on first mount — a three-quarter view. */
-const DEFAULT_VIEW = new Vector3(0.75, 0.55, 1).normalize();
+/**
+ * Direction the camera sits in on first mount — a three-quarter view. Only the
+ * direction matters: `fitToSphere` sets the distance.
+ */
+const DEFAULT_VIEW: [number, number, number] = [0.75, 0.55, 1];
 
 export function Box3D({
   layout,
@@ -60,7 +49,7 @@ export function Box3D({
     <div className="box3d">
       <Canvas
         dpr={[1, 2]}
-        camera={{ fov: FOV, position: [1, 1, 1] }}
+        camera={{ fov: FOV, position: DEFAULT_VIEW }}
         // Millimetre-scale geometry, so the camera is metres away in world units.
         gl={{ antialias: true }}
         onCreated={({ gl }) =>
@@ -121,65 +110,70 @@ function SlabMesh({ slab }: { slab: Slab }) {
  * both survive, and editing a dimension does not throw away the view.
  */
 function Frame({ model }: { model: BoxModel }) {
-  // The camera and canvas are fixed for the Canvas's lifetime, so reading them
-  // off the store is a stable, non-reactive read — and taking the camera at
-  // effect time rather than render time keeps the mutation below off a value
-  // the React Compiler considers render-scoped.
-  const store = useStore();
-  const controls = useRef<OrbitControls>(null);
+  const controls = useRef<CameraControls>(null);
   const placed = useRef(false);
-  const lastFit = useRef(0);
+  const lastRadius = useRef(0);
   const [extentX, extentY, extentZ] = model.extent;
 
   useEffect(() => {
-    const camera = store.getState().camera as PerspectiveCamera;
-    const orbit = controls.current;
+    const camera = controls.current;
+    if (!camera) return;
 
     const radius = Math.hypot(extentX, extentY, extentZ) / 2;
-    const fit = (radius / Math.sin((FOV / 2) * (Math.PI / 180))) * 1.05;
     const centre = new Vector3(0, extentY / 2, 0);
+    const maxDistance = radius * 8;
 
-    camera.near = fit / 100;
-    camera.far = fit * 10;
-    camera.updateProjectionMatrix();
+    camera.minDistance = radius * 0.8;
+    camera.maxDistance = maxDistance;
 
-    if (orbit) {
-      orbit.minDistance = radius * 0.8;
-      orbit.maxDistance = fit * 3;
-    }
+    // CameraControls drives position and target only — the clipping planes are
+    // still ours. The defaults (0.1 / 1000) are calibrated for a scene measured
+    // in metres; ours is in millimetres, so a box a few hundred wide sits
+    // partly beyond `far` and its far corner gets clipped to the background.
+    const lens = camera.camera as PerspectiveCamera;
+    lens.near = radius / 100;
+    lens.far = maxDistance + radius * 2;
+    lens.updateProjectionMatrix();
 
     if (!placed.current) {
-      camera.position.copy(centre).addScaledVector(DEFAULT_VIEW, fit);
-      orbit?.target.copy(centre);
+      // Frames from wherever the camera already points, which is the canvas's
+      // initial position — hence DEFAULT_VIEW as its starting coordinates.
+      camera.fitToSphere(new Sphere(centre, radius), false);
       placed.current = true;
     } else {
-      // Offset from the *old* target carries the user's angle and how far they
-      // have zoomed; rescaling it by the change in fit keeps the box the same
-      // apparent size without touching the direction.
-      const offset = camera.position
-        .clone()
-        .sub(orbit?.target ?? centre)
-        .multiplyScalar(lastFit.current > 0 ? fit / lastFit.current : 1);
-      orbit?.target.copy(centre);
-      camera.position.copy(centre).add(offset);
+      // Offset from the old target carries the user's angle and how far they
+      // have zoomed. Scaling it by the change in radius keeps the box the same
+      // apparent size, and re-applying it from the new centre leaves the
+      // direction untouched.
+      const offset = camera
+        .getPosition(new Vector3())
+        .sub(camera.getTarget(new Vector3()))
+        .multiplyScalar(
+          lastRadius.current > 0 ? radius / lastRadius.current : 1,
+        )
+        .add(centre);
+      camera.setLookAt(...offset.toArray(), ...centre.toArray(), true);
     }
 
-    lastFit.current = fit;
-    orbit?.update();
-  }, [store, extentX, extentY, extentZ]);
-
-  // enableDamping only takes effect if update() runs every frame.
-  useFrame(() => controls.current?.update());
-
-  const { camera, gl } = store.getState();
+    lastRadius.current = radius;
+  }, [extentX, extentY, extentZ]);
 
   return (
-    <orbitControls
+    <CameraControls
       ref={controls}
-      args={[camera, gl.domElement]}
-      enablePan={false}
-      enableDamping
-      dampingFactor={0.08}
+      makeDefault
+      // Rotate and dolly only — panning would let the box drift off-screen.
+      mouseButtons={{
+        left: ACTION.ROTATE,
+        middle: ACTION.DOLLY,
+        right: ACTION.NONE,
+        wheel: ACTION.DOLLY,
+      }}
+      touches={{
+        one: ACTION.TOUCH_ROTATE,
+        two: ACTION.TOUCH_DOLLY,
+        three: ACTION.NONE,
+      }}
     />
   );
 }
