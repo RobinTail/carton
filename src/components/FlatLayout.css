@@ -1,0 +1,25 @@
+/*
+ * These rules theme the on-screen preview only. CSS beats the presentation
+ * attributes set on the elements, so a standalone exported file — which never
+ * sees this stylesheet — still falls back to plain black cuts and red folds.
+ */
+
+.flat-layout {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 68svh;
+}
+
+.flat-layout__cuts {
+  stroke: var(--cut);
+}
+
+.flat-layout__folds {
+  stroke: var(--fold);
+}
+
+.flat-layout__annotations {
+  fill: var(--annotation);
+  stroke: var(--annotation);
+}

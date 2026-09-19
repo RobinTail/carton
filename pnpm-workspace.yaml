@@ -1,0 +1,4 @@
+engineStrict: true
+autoInstallPeers: false
+dedupePeers: true
+minimumReleaseAge: 10080
