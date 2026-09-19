@@ -127,10 +127,49 @@
   box-shadow: var(--shadow);
 }
 
+/* The canvas manages its own height and sits flush to the rounded edge. */
+.preview__paper[data-view="model"] {
+  padding: 8px;
+}
+
+.preview__paper[data-view="model"]:has(.preview__empty, .preview__notice) {
+  padding: clamp(16px, 3vw, 36px);
+}
+
 .preview__empty {
   color: var(--annotation);
   text-align: center;
   max-width: 28ch;
+}
+
+.preview__notice {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 44ch;
+  padding: 20px 24px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  text-align: center;
+  background: var(--surface);
+}
+
+.preview__notice strong {
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.preview__notice p {
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text);
+  text-wrap: pretty;
+}
+
+.preview__hint {
+  font-size: 13px;
+  color: var(--text);
+  opacity: 0.7;
 }
 
 .legend {
