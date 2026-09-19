@@ -33,6 +33,12 @@ export interface BoxModel {
 const SPLAY = Math.PI / 4;
 /** Horizontal and vertical reach of a flap hinged open at 45°. */
 const REACH = Math.SQRT1_2;
+/**
+ * Millimetres trimmed off each flap of the pair that would otherwise meet
+ * dead-on, opening the seam between them to 2 mm. Real board needs clearance
+ * here too, or the two fight at the fold.
+ */
+const CLEARANCE = 1;
 
 export function buildModel(layout: Layout, params: BoxParams): BoxModel {
   const { length: L, width: W, height: H } = layout.exterior;
@@ -72,40 +78,46 @@ export function buildModel(layout: Layout, params: BoxParams): BoxModel {
   // A flap starts at the *inner* face of the wall it hangs from. Running it to
   // the outer plane instead would bury one board's depth inside the wall, and
   // the two would share an outer face and a bottom face — which z-fights.
-  // Only the near edge moves: the tip still lands at `flapHeight` from the
-  // outer plane, so the butting pair meets exactly at the centre and the other
-  // pair leaves precisely `layout.flapGap`.
   const flapDepth = Math.max(flapHeight - t, 0);
-  const reachZ = W / 2 - (flapHeight + t) / 2;
-  const reachX = L / 2 - (flapHeight + t) / 2;
+
+  // A pair that meets dead-on renders as one unbroken surface, so the seam —
+  // the thing the lap order is read from — disappears. Taking CLEARANCE off
+  // each of those two opens it up. Only the pair that would actually touch is
+  // trimmed, so the other keeps `layout.flapGap` exactly as the summary reports.
+  const frontBackDepth = Math.max(flapDepth - (W <= L ? CLEARANCE : 0), 0);
+  const sideDepth = Math.max(flapDepth - (L <= W ? CLEARANCE : 0), 0);
+
+  // Near edge pinned to the wall's inner face; only the tip moves.
+  const reachZ = W / 2 - t - frontBackDepth / 2;
+  const reachX = L / 2 - t - sideDepth / 2;
 
   slabs.push(
     flap(
       "flap-bottom-front",
       "Front flap",
       frontBackTone,
-      [flapL, t, flapDepth],
+      [flapL, t, frontBackDepth],
       [0, frontBackY, reachZ],
     ),
     flap(
       "flap-bottom-back",
       "Back flap",
       frontBackTone,
-      [flapL, t, flapDepth],
+      [flapL, t, frontBackDepth],
       [0, frontBackY, -reachZ],
     ),
     flap(
       "flap-bottom-right",
       "Side flap",
       sideTone,
-      [flapDepth, t, flapW],
+      [sideDepth, t, flapW],
       [reachX, sideY, 0],
     ),
     flap(
       "flap-bottom-left",
       "Side flap",
       sideTone,
-      [flapDepth, t, flapW],
+      [sideDepth, t, flapW],
       [-reachX, sideY, 0],
     ),
   );
