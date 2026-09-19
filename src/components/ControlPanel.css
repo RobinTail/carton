@@ -23,7 +23,7 @@
 }
 
 .controls__group legend {
-  padding: 0;
+  padding: 0 6px 0 0;
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.08em;
@@ -37,6 +37,14 @@
   color: var(--text);
   opacity: 0.8;
   text-wrap: pretty;
+
+  legend + & {
+    margin-top: 4px;
+  }
+
+  label + & {
+    margin-top: -4px;
+  }
 }
 
 /* --- Fields ---------------------------------------------------------- */

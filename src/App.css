@@ -3,7 +3,7 @@
 
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 20px;
   min-height: 100svh;
   padding: 32px clamp(16px, 4vw, 48px) 48px;
   max-width: 1440px;
@@ -13,8 +13,7 @@
 .app__header {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  max-width: 62ch;
+  gap: 12px;
 }
 
 .app__header p {
@@ -51,7 +50,7 @@
 .preview {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
   height: 100%;
 }
 
@@ -66,7 +65,7 @@
 .preview__actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 
 .button {
