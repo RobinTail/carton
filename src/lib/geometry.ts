@@ -45,8 +45,13 @@ export interface Layout {
   sheetHeight: number;
   /** Outside dimensions of the folded box. */
   exterior: { length: number; width: number; height: number };
-  /** Height of a single flap; two opposing flaps butt in the middle. */
+  /**
+   * Height of every flap. The pair spanning the shorter footprint axis butts in
+   * the middle; the other pair stops short of it by {@link flapGap}.
+   */
   flapHeight: number;
+  /** Shortfall between the opposing flaps on the longer footprint axis. */
+  flapGap: number;
   /** SVG path `d` strings for every cut line. */
   cuts: string[];
   folds: FoldLine[];
@@ -135,7 +140,13 @@ export function computeLayout(params: BoxParams): Layout {
   const L = mm(interiorLength + shell);
   const W = mm(interiorWidth + shell);
   const H = mm(interiorHeight + shell);
-  const flapHeight = mm(W / 2);
+  // Every flap in an RSC is cut to the same height, and a flap reaches across
+  // the axis *perpendicular* to the panel it hangs from: the front/back flaps
+  // span W, the side flaps span L. Sizing off the shorter axis lets that pair
+  // butt in the middle while the other pair stops short — halving the longer
+  // axis instead would make the short-axis pair collide.
+  const flapHeight = mm(Math.min(L, W) / 2);
+  const flapGap = mm(Math.abs(L - W));
   const tab = glueTab ? mm(glueTabWidth) : 0;
 
   const x0 = 0;
@@ -246,6 +257,7 @@ export function computeLayout(params: BoxParams): Layout {
     sheetHeight,
     exterior: { length: L, width: W, height: H },
     flapHeight,
+    flapGap,
     cuts,
     folds,
     panels,

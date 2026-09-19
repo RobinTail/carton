@@ -24,7 +24,14 @@ export function Summary({ layout }: { layout: Layout }) {
       </div>
       <div className="summary__stat">
         <dt>Flap height</dt>
-        <dd>{format(layout.flapHeight)} mm</dd>
+        <dd>
+          {format(layout.flapHeight)} mm
+          <span className="summary__aside">
+            {layout.flapGap > 0
+              ? `${format(layout.flapGap)} mm gap on the long axis`
+              : "flaps butt on both axes"}
+          </span>
+        </dd>
       </div>
     </dl>
   );

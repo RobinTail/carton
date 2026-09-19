@@ -27,8 +27,14 @@ W = interiorWidth  + 2 × damping + 2 × cardboard
 H = interiorHeight + 2 × damping + 2 × cardboard
 ```
 
-with a flap height of `W / 2`, so opposing flaps butt in the middle. The sheet runs
-`[glue tab] [front] [side] [back] [side]` left to right, with a row of flaps above and below.
+The sheet runs `[glue tab] [front] [side] [back] [side]` left to right, with a row of flaps
+above and below.
+
+Every flap is cut to the same height, `min(L, W) / 2`. A flap reaches across the axis
+perpendicular to the panel it hangs from — the front and back flaps span `W`, the side flaps
+span `L` — so sizing off the shorter axis lets that pair butt exactly in the middle while the
+other pair stops `|L − W|` short. Halving the longer axis instead would drive the short-axis
+flaps into each other.
 
 With the glue tab switched off, its geometry is removed entirely and the left edge of the
 front panel becomes a cut rather than a fold.
