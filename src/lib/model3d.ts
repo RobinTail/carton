@@ -69,38 +69,43 @@ export function buildModel(layout: Layout, params: BoxParams): BoxModel {
   );
 
   // --- Bottom flaps --------------------------------------------------------
-  // Hinged at the wall's outer plane, so the butting pair meets exactly at the
-  // centre and the other pair leaves precisely `layout.flapGap`.
-  const reachZ = W / 2 - flapHeight / 2;
-  const reachX = L / 2 - flapHeight / 2;
+  // A flap starts at the *inner* face of the wall it hangs from. Running it to
+  // the outer plane instead would bury one board's depth inside the wall, and
+  // the two would share an outer face and a bottom face — which z-fights.
+  // Only the near edge moves: the tip still lands at `flapHeight` from the
+  // outer plane, so the butting pair meets exactly at the centre and the other
+  // pair leaves precisely `layout.flapGap`.
+  const flapDepth = Math.max(flapHeight - t, 0);
+  const reachZ = W / 2 - (flapHeight + t) / 2;
+  const reachX = L / 2 - (flapHeight + t) / 2;
 
   slabs.push(
     flap(
       "flap-bottom-front",
       "Front flap",
       frontBackTone,
-      [flapL, t, flapHeight],
+      [flapL, t, flapDepth],
       [0, frontBackY, reachZ],
     ),
     flap(
       "flap-bottom-back",
       "Back flap",
       frontBackTone,
-      [flapL, t, flapHeight],
+      [flapL, t, flapDepth],
       [0, frontBackY, -reachZ],
     ),
     flap(
       "flap-bottom-right",
       "Side flap",
       sideTone,
-      [flapHeight, t, flapW],
+      [flapDepth, t, flapW],
       [reachX, sideY, 0],
     ),
     flap(
       "flap-bottom-left",
       "Side flap",
       sideTone,
-      [flapHeight, t, flapW],
+      [flapDepth, t, flapW],
       [-reachX, sideY, 0],
     ),
   );
