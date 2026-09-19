@@ -2,6 +2,11 @@
   "name": "carton",
   "version": "0.0.0",
   "private": true,
+  "description": "Generates the flat cut-and-fold layout for a regular slotted container (RSC)",
+  "author": {
+    "name": "Anna Bocharova",
+    "url": "https://robintail.cz"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",
