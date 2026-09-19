@@ -38,10 +38,10 @@ const SPLAY = Math.PI / 4;
 const REACH = Math.SQRT1_2;
 /**
  * Millimetres trimmed off each flap of the pair that would otherwise meet
- * dead-on, opening the seam between them to 2 mm. Real board needs clearance
+ * dead-on, opening the seam between them to 1 mm. Real board needs clearance
  * here too, or the two fight at the fold.
  */
-const CLEARANCE = 1;
+const CLEARANCE = 0.5;
 /** Standard packing tape, in millimetres. */
 const TAPE_WIDTH = 52;
 /** Thick enough to sit clear of the board it seals without reading as a slab. */
