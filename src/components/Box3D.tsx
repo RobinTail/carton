@@ -64,6 +64,14 @@ export function Box3D({
         <hemisphereLight args={["#fffaf2", "#5b5347", 1.4]} />
         <directionalLight position={[2, 3, 2]} intensity={2.2} />
         <directionalLight position={[-2, 1, -1.5]} intensity={0.7} />
+        {/* Underside fill. Neither key nor rim reaches the bottom flaps, which
+            are the whole point of the model and are visible whenever the camera
+            drops below the horizon. Warm and dim, so it reads as bounce. */}
+        <directionalLight
+          position={[0.5, -3, 1]}
+          intensity={0.7}
+          color="#ffeedd"
+        />
 
         {model.slabs.map((slab) => (
           <SlabMesh key={slab.id} slab={slab} />
