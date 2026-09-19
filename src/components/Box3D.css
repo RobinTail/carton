@@ -1,0 +1,19 @@
+.box3d {
+  width: 100%;
+  height: min(58svh, 520px);
+  /* Without this a touch drag scrolls the page instead of orbiting. */
+  touch-action: none;
+  cursor: grab;
+}
+
+.box3d:active {
+  cursor: grabbing;
+}
+
+.box3d canvas {
+  display: block;
+  border-radius: 10px;
+  outline: none;
+  /* R3F styles the canvas inline, which overrides the inherited grab cursor. */
+  cursor: inherit !important;
+}

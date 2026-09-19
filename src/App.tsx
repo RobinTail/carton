@@ -1,7 +1,11 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { ControlPanel } from "./components/ControlPanel.tsx";
 import { FlatLayout } from "./components/FlatLayout.tsx";
 import { Summary } from "./components/Summary.tsx";
+import { Tabs, type Tab } from "./components/Tabs.tsx";
+import { ErrorBoundary } from "./components/ErrorBoundary.tsx";
+import { PreviewNotice } from "./components/PreviewNotice.tsx";
+import { isWebGLAvailable } from "./lib/webgl.ts";
 import {
   computeLayout,
   validate,
@@ -12,6 +16,12 @@ import {
 import { decodeParams, encodeParams } from "./lib/urlState.ts";
 import "./App.css";
 
+// three.js is an order of magnitude heavier than the rest of the app, so it
+// only downloads once someone actually opens the 3D tab.
+const Box3D = lazy(() =>
+  import("./components/Box3D.tsx").then((m) => ({ default: m.Box3D })),
+);
+
 type ShareState = "idle" | "copied" | "failed";
 
 const SHARE_LABEL: Record<ShareState, string> = {
@@ -20,10 +30,18 @@ const SHARE_LABEL: Record<ShareState, string> = {
   failed: "Copy failed",
 };
 
+type View = "flat" | "model";
+
+const VIEWS: readonly Tab<View>[] = [
+  { id: "flat", label: "Flat" },
+  { id: "model", label: "3D" },
+];
+
 export default function App() {
   const [params, setParams] = useState<BoxParams>(() =>
     decodeParams(window.location.search),
   );
+  const [view, setView] = useState<View>("flat");
   const [annotate, setAnnotate] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [shared, setShared] = useState<ShareState>("idle");
@@ -97,7 +115,17 @@ export default function App() {
         <section className="app__preview">
           <div className="preview">
             <div className="preview__toolbar">
-              <Legend />
+              <Tabs
+                tabs={VIEWS}
+                active={view}
+                onChange={setView}
+                idPrefix="preview"
+              />
+              {view === "flat" ? (
+                <Legend />
+              ) : isWebGLAvailable() ? (
+                <p className="preview__hint">Drag to rotate · scroll to zoom</p>
+              ) : null}
               <div className="preview__actions">
                 <button
                   type="button"
@@ -118,13 +146,42 @@ export default function App() {
                 </button>
               </div>
             </div>
-            <div className="preview__paper">
-              {layout ? (
-                <FlatLayout layout={layout} annotate={annotate} />
-              ) : (
+            <div
+              className="preview__paper"
+              role="tabpanel"
+              id={`preview-panel-${view}`}
+              aria-labelledby={`preview-tab-${view}`}
+              data-view={view}
+            >
+              {!layout ? (
                 <p className="preview__empty">
                   Correct the highlighted fields to draw the layout.
                 </p>
+              ) : view === "flat" ? (
+                <FlatLayout layout={layout} annotate={annotate} />
+              ) : !isWebGLAvailable() ? (
+                <PreviewNotice title="3D preview unavailable">
+                  This browser cannot open a WebGL context, usually because
+                  hardware acceleration is switched off. The Flat tab and the
+                  SVG export work regardless.
+                </PreviewNotice>
+              ) : (
+                <ErrorBoundary
+                  fallback={
+                    <PreviewNotice title="The 3D preview failed to start">
+                      The model could not be rendered on this device. The Flat
+                      tab and the SVG export are unaffected.
+                    </PreviewNotice>
+                  }
+                >
+                  <Suspense
+                    fallback={
+                      <p className="preview__empty">Loading the model…</p>
+                    }
+                  >
+                    <Box3D layout={layout} params={params} />
+                  </Suspense>
+                </ErrorBoundary>
               )}
             </div>
             {layout && <Summary layout={layout} />}

@@ -1,0 +1,30 @@
+.tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+}
+
+.tabs__tab {
+  padding: 5px 14px;
+  border: 0;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  background: none;
+  transition:
+    color 0.15s,
+    background 0.15s;
+}
+
+.tabs__tab:hover {
+  color: var(--text-h);
+}
+
+.tabs__tab[aria-selected="true"] {
+  color: var(--accent);
+  background: var(--accent-bg);
+}
