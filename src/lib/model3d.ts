@@ -9,13 +9,16 @@ import type { BoxParams, Layout, PanelKind } from "./geometry.ts";
  * way `computeLayout` is.
  */
 
-/** Shade of a slab, so the lap order and the interior read at a glance. */
-export type Tone = "outer" | "inner";
+/** Surface treatment of a slab: the two board shades, plus translucent tape. */
+export type Tone = "outer" | "inner" | "tape";
+
+/** Board panels come from the blank; tape is a 3D-only addition. */
+export type SlabKind = PanelKind | "tape";
 
 export interface Slab {
   id: string;
   label: string;
-  kind: PanelKind;
+  kind: SlabKind;
   tone: Tone;
   size: [number, number, number];
   position: [number, number, number];
@@ -39,6 +42,10 @@ const REACH = Math.SQRT1_2;
  * here too, or the two fight at the fold.
  */
 const CLEARANCE = 1;
+/** Standard packing tape, in millimetres. */
+const TAPE_WIDTH = 52;
+/** Thick enough to sit clear of the board it seals without reading as a slab. */
+const TAPE_THICKNESS = 0.4;
 
 export function buildModel(layout: Layout, params: BoxParams): BoxModel {
   const { length: L, width: W, height: H } = layout.exterior;
@@ -180,6 +187,39 @@ export function buildModel(layout: Layout, params: BoxParams): BoxModel {
     });
   }
 
+  // --- Sealing tape --------------------------------------------------------
+  // Runs the length of the bottom seam and turns up the two walls the seam ends
+  // at, halfway to the rim. The seam lies between whichever pair butts, so when
+  // that pair flips the tape turns with it. Laid on the outside of the board, so
+  // the box now rests on the tape rather than on the flaps.
+  const tape = TAPE_THICKNESS;
+  const halfRise = H / 2;
+  // Seam between the front and back flaps sits at z = 0 and runs along X; the
+  // side-flap seam sits at x = 0 and runs along Z.
+  const seamAlongX = frontBackIsOuter;
+  const across = Math.min(TAPE_WIDTH, seamAlongX ? W : L);
+  // The wall strips drop to -tape so they close the corner the floor strip
+  // stops at, meeting it edge to edge rather than overlapping — two overlapping
+  // translucent slabs would double up in shade.
+  const wallRun = halfRise + tape;
+  const wallCentre = (halfRise - tape) / 2;
+
+  if (seamAlongX) {
+    const end = L / 2 + tape / 2;
+    slabs.push(
+      tapeSlab("tape-floor", [L, tape, across], [0, -tape / 2, 0]),
+      tapeSlab("tape-end-a", [tape, wallRun, across], [end, wallCentre, 0]),
+      tapeSlab("tape-end-b", [tape, wallRun, across], [-end, wallCentre, 0]),
+    );
+  } else {
+    const end = W / 2 + tape / 2;
+    slabs.push(
+      tapeSlab("tape-floor", [across, tape, W], [0, -tape / 2, 0]),
+      tapeSlab("tape-end-a", [across, wallRun, tape], [0, wallCentre, end]),
+      tapeSlab("tape-end-b", [across, wallRun, tape], [0, wallCentre, -end]),
+    );
+  }
+
   const splayReach = flapHeight * REACH;
 
   return {
@@ -214,6 +254,22 @@ function flap(
   position: [number, number, number],
 ): Slab {
   return { id, label, kind: "flap", tone, size, position, rotation: [0, 0, 0] };
+}
+
+function tapeSlab(
+  id: string,
+  size: [number, number, number],
+  position: [number, number, number],
+): Slab {
+  return {
+    id,
+    label: "Tape",
+    kind: "tape",
+    tone: "tape",
+    size,
+    position,
+    rotation: [0, 0, 0],
+  };
 }
 
 function topFlap(

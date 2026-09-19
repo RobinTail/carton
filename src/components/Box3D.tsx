@@ -23,7 +23,13 @@ declare module "@react-three/fiber" {
   }
 }
 
-const KRAFT = { outer: "#cda271", inner: "#a87c4c" } as const;
+const SURFACE = {
+  outer: { color: "#cda271", opacity: 1, roughness: 0.85 },
+  inner: { color: "#a87c4c", opacity: 1, roughness: 0.85 },
+  // Translucent tan, and glossier than board — it should read as film.
+  tape: { color: "#b07c3a", opacity: 0.55, roughness: 0.35 },
+} as const;
+
 const FOV = 40;
 
 export function Box3D({
@@ -84,13 +90,21 @@ export function Box3D({
 }
 
 function SlabMesh({ slab }: { slab: Slab }) {
+  const surface = SURFACE[slab.tone];
+  const translucent = surface.opacity < 1;
+
   return (
     <mesh position={slab.position} rotation={slab.rotation}>
       <boxGeometry args={slab.size} />
       <meshStandardMaterial
-        color={KRAFT[slab.tone]}
-        roughness={0.85}
+        color={surface.color}
+        roughness={surface.roughness}
         metalness={0}
+        transparent={translucent}
+        opacity={surface.opacity}
+        // Without this a translucent slab occludes its own far side, so the
+        // strip darkens wherever the camera sees through two of its faces.
+        depthWrite={!translucent}
       />
     </mesh>
   );
