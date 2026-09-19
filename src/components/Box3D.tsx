@@ -31,6 +31,8 @@ const SURFACE = {
 } as const;
 
 const FOV = 40;
+/** Direction the camera sits in on first mount — a three-quarter view. */
+const DEFAULT_VIEW = new Vector3(0.75, 0.55, 1).normalize();
 
 export function Box3D({
   layout,
@@ -111,8 +113,12 @@ function SlabMesh({ slab }: { slab: Slab }) {
 }
 
 /**
- * Frames the camera on the model and drives the orbit controls. Refits whenever
- * the box changes size, so a flat tray and a tall carton both fill the view.
+ * Frames the camera on the model and drives the orbit controls.
+ *
+ * Only the first fit places the camera. After that a dimension change keeps
+ * whatever viewpoint the user has orbited to, re-centring on the new box and
+ * scaling the distance in step with it — so the angle and the apparent size
+ * both survive, and editing a dimension does not throw away the view.
  */
 function Frame({ model }: { model: BoxModel }) {
   // The camera and canvas are fixed for the Canvas's lifetime, so reading them
@@ -121,28 +127,45 @@ function Frame({ model }: { model: BoxModel }) {
   // the React Compiler considers render-scoped.
   const store = useStore();
   const controls = useRef<OrbitControls>(null);
+  const placed = useRef(false);
+  const lastFit = useRef(0);
   const [extentX, extentY, extentZ] = model.extent;
 
   useEffect(() => {
     const camera = store.getState().camera as PerspectiveCamera;
+    const orbit = controls.current;
+
     const radius = Math.hypot(extentX, extentY, extentZ) / 2;
-    const distance = (radius / Math.sin((FOV / 2) * (Math.PI / 180))) * 1.05;
+    const fit = (radius / Math.sin((FOV / 2) * (Math.PI / 180))) * 1.05;
     const centre = new Vector3(0, extentY / 2, 0);
 
-    camera.position
-      .copy(centre)
-      .addScaledVector(new Vector3(0.75, 0.55, 1).normalize(), distance);
-    camera.near = distance / 100;
-    camera.far = distance * 10;
+    camera.near = fit / 100;
+    camera.far = fit * 10;
     camera.updateProjectionMatrix();
 
-    const orbit = controls.current;
     if (orbit) {
-      orbit.target.copy(centre);
       orbit.minDistance = radius * 0.8;
-      orbit.maxDistance = distance * 3;
-      orbit.update();
+      orbit.maxDistance = fit * 3;
     }
+
+    if (!placed.current) {
+      camera.position.copy(centre).addScaledVector(DEFAULT_VIEW, fit);
+      orbit?.target.copy(centre);
+      placed.current = true;
+    } else {
+      // Offset from the *old* target carries the user's angle and how far they
+      // have zoomed; rescaling it by the change in fit keeps the box the same
+      // apparent size without touching the direction.
+      const offset = camera.position
+        .clone()
+        .sub(orbit?.target ?? centre)
+        .multiplyScalar(lastFit.current > 0 ? fit / lastFit.current : 1);
+      orbit?.target.copy(centre);
+      camera.position.copy(centre).add(offset);
+    }
+
+    lastFit.current = fit;
+    orbit?.update();
   }, [store, extentX, extentY, extentZ]);
 
   // enableDamping only takes effect if update() runs every frame.
