@@ -160,15 +160,22 @@ export function buildModel(layout: Layout, params: BoxParams): BoxModel {
   // --- Glue tab ------------------------------------------------------------
   // In the blank the tab hangs off the front panel's left edge, which is the
   // edge the last side panel closes against, so it lies inside that side wall.
+  //
+  // It starts above the folded bottom rather than at y = 0. Run to the floor it
+  // would pass through both flap layers and share its downward face with them,
+  // which z-fights when the box is viewed from below. Resting it on the stack
+  // is also the truer read: the flaps fold in underneath the tab.
   if (params.glueTab) {
     const depth = Math.min(params.glueTabWidth, flapW);
+    const base = 2 * t;
+    const height = Math.max(H - base, 0);
     slabs.push({
       id: "tab",
       label: "Glue tab",
       kind: "tab",
       tone: "inner",
-      size: [t, H, depth],
-      position: [-(L / 2 - 1.5 * t), H / 2, W / 2 - t - depth / 2],
+      size: [t, height, depth],
+      position: [-(L / 2 - 1.5 * t), base + height / 2, W / 2 - t - depth / 2],
       rotation: [0, 0, 0],
     });
   }
