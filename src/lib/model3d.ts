@@ -143,7 +143,7 @@ export function buildModel(layout: Layout, params: BoxParams): BoxModel {
 
   // --- Top flaps, splayed 45° outward --------------------------------------
   const rise = (flapHeight / 2) * REACH;
-  const topY = H + rise;
+  const topY = H + rise - 1; // 1mm adjustment to avoid the gap between the wall and the flap
 
   slabs.push(
     topFlap(
