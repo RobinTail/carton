@@ -78,10 +78,14 @@ export type ParamErrors = Partial<Record<keyof BoxParams, string>>;
 export function validate(params: BoxParams): ParamErrors {
   const errors: ParamErrors = {};
 
+  // The board has to have some substance: at zero thickness the walls are
+  // nothing, the fold allowances collapse and every panel in the model becomes
+  // a degenerate zero-depth slab.
   const positive = [
     "interiorLength",
     "interiorWidth",
     "interiorHeight",
+    "cardboardThickness",
   ] as const;
   for (const key of positive) {
     const value = params[key];
@@ -89,7 +93,8 @@ export function validate(params: BoxParams): ParamErrors {
     else if (value <= 0) errors[key] = "Must be greater than 0";
   }
 
-  const nonNegative = ["cardboardThickness", "dampingThickness"] as const;
+  // A liner is optional, so zero damping is a perfectly good box.
+  const nonNegative = ["dampingThickness"] as const;
   for (const key of nonNegative) {
     const value = params[key];
     if (!Number.isFinite(value)) errors[key] = "Enter a number";
