@@ -15,6 +15,12 @@ export type Tone = "outer" | "inner" | "tape";
 /** Board panels come from the blank; tape is a 3D-only addition. */
 export type SlabKind = PanelKind | "tape";
 
+/** A world axis, as an index into {@link Slab.size}. */
+export type Axis = 0 | 1 | 2;
+export const X: Axis = 0;
+export const Y: Axis = 1;
+export const Z: Axis = 2;
+
 export interface Slab {
   id: string;
   label: string;
@@ -23,6 +29,12 @@ export interface Slab {
   size: [number, number, number];
   position: [number, number, number];
   rotation: [number, number, number];
+  /**
+   * Axis the surface pattern should run along. Set where the material has a
+   * direction — a strip of tape — and left unset for board, whose paper grain
+   * looks the same either way.
+   */
+  grain?: Axis;
 }
 
 export interface BoxModel {
@@ -43,7 +55,7 @@ const REACH = Math.SQRT1_2;
  */
 const CLEARANCE = 0.5;
 /** Standard packing tape, in millimetres. */
-const TAPE_WIDTH = 52;
+export const TAPE_WIDTH = 52;
 /** Thick enough to sit clear of the board it seals without reading as a slab. */
 const TAPE_THICKNESS = 0.4;
 
@@ -204,19 +216,22 @@ export function buildModel(layout: Layout, params: BoxParams): BoxModel {
   const wallRun = halfRise + tape;
   const wallCentre = (halfRise - tape) / 2;
 
+  // `grain` is the axis the strip runs along, which is what the tape scan has
+  // to be oriented to. It cannot be read back from the slab's size: the wall
+  // strips can be shorter than the tape is wide on a shallow box.
   if (seamAlongX) {
     const end = L / 2 + tape / 2;
     slabs.push(
-      tapeSlab("tape-floor", [L, tape, across], [0, -tape / 2, 0]),
-      tapeSlab("tape-end-a", [tape, wallRun, across], [end, wallCentre, 0]),
-      tapeSlab("tape-end-b", [tape, wallRun, across], [-end, wallCentre, 0]),
+      tapeSlab("tape-floor", [L, tape, across], [0, -tape / 2, 0], X),
+      tapeSlab("tape-end-a", [tape, wallRun, across], [end, wallCentre, 0], Y),
+      tapeSlab("tape-end-b", [tape, wallRun, across], [-end, wallCentre, 0], Y),
     );
   } else {
     const end = W / 2 + tape / 2;
     slabs.push(
-      tapeSlab("tape-floor", [across, tape, W], [0, -tape / 2, 0]),
-      tapeSlab("tape-end-a", [across, wallRun, tape], [0, wallCentre, end]),
-      tapeSlab("tape-end-b", [across, wallRun, tape], [0, wallCentre, -end]),
+      tapeSlab("tape-floor", [across, tape, W], [0, -tape / 2, 0], Z),
+      tapeSlab("tape-end-a", [across, wallRun, tape], [0, wallCentre, end], Y),
+      tapeSlab("tape-end-b", [across, wallRun, tape], [0, wallCentre, -end], Y),
     );
   }
 
@@ -260,6 +275,7 @@ function tapeSlab(
   id: string,
   size: [number, number, number],
   position: [number, number, number],
+  grain: Axis,
 ): Slab {
   return {
     id,
@@ -269,6 +285,7 @@ function tapeSlab(
     size,
     position,
     rotation: [0, 0, 0],
+    grain,
   };
 }
 

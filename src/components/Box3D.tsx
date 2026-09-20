@@ -18,6 +18,11 @@ import {
 import type { BoxParams, Layout } from "../lib/geometry.ts";
 import {
   buildModel,
+  TAPE_WIDTH,
+  X,
+  Y,
+  Z,
+  type Axis,
   type BoxModel,
   type Slab,
   type Tone,
@@ -40,19 +45,33 @@ const BOARD_MAPS = {
   normalMap: "/paper_0025_normal_opengl_1k.jpg",
 } as const;
 
-type BoardMaps = Record<keyof typeof BOARD_MAPS, Texture>;
+const TAPE_MAPS = {
+  map: "/tape_0012_color_1k.jpg",
+  aoMap: "/tape_0012_ao_1k.jpg",
+  roughnessMap: "/tape_0012_roughness_1k.jpg",
+  normalMap: "/tape_0012_normal_opengl_1k.jpg",
+} as const;
 
-/** Millimetres of board covered by one tile of the paper texture. */
-const TILE = 150;
+type MapSet = Record<keyof typeof BOARD_MAPS, Texture>;
+type Material = "board" | "tape";
+type Surfaces = Record<Material, MapSet>;
 
-// `color` multiplies the albedo map, so these tint the (pale) paper scan to
-// kraft. The two board tones stay well apart: the contrast between them is what
-// shows which bottom flap laps over which.
+/**
+ * Millimetres of real surface covered by one tile of each scan. The tape tile
+ * is set to the roll width, so a strip gets exactly one tile across it and
+ * repeats only along its length — the way a real strip looks.
+ */
+const TILE: Record<Material, number> = { board: 150, tape: TAPE_WIDTH };
+
+// With a map bound, `color` and `roughness` become multipliers over it rather
+// than the appearance itself. The two board tones stay well apart: the contrast
+// between them is what shows which bottom flap laps over which.
 const SURFACE: Record<Tone, MeshStandardMaterialParameters> = {
   outer: { color: "#f1ece7", roughness: 0.95 },
   inner: { color: "#e6dcd1", roughness: 0.95 },
-  // Translucent tan, and glossier than board — it should read as film.
-  tape: { color: "#684714", opacity: 0.35, roughness: 0.15 },
+  // Untinted — the scan carries its own tan. Translucent, and glossier than
+  // board, so it reads as film.
+  tape: { opacity: 0.35, roughness: 0.15 },
 };
 
 const FOV = 40;
@@ -122,29 +141,34 @@ export function Box3D({
   );
 }
 
-/** Every slab of the box, sharing one set of loaded board maps. */
+/** Every slab of the box, sharing one loaded scan per material. */
 function Board({ model }: { model: BoxModel }) {
-  const board = useBoard();
+  const surfaces = useSurfaces();
 
   return (
     <>
       {model.slabs.map((slab) => (
-        <SlabMesh key={slab.id} slab={slab} board={board} />
+        <SlabMesh key={slab.id} slab={slab} surfaces={surfaces} />
       ))}
     </>
   );
 }
 
 /**
- * Loads the board maps. Must run inside the Canvas: `useTexture` reaches for
- * the renderer through `useThree`. Suspends until every map has arrived, and a
+ * Loads both scans. Must run inside the Canvas: `useTexture` reaches for the
+ * renderer through `useThree`. Suspends until every map has arrived, and a
  * missing file rejects into the error boundary around `Box3D` rather than
  * failing silently to the console.
  */
-function useBoard(): BoardMaps {
-  const { map, aoMap, roughnessMap, normalMap } = useTexture(
-    BOARD_MAPS,
-  ) as BoardMaps;
+function useSurfaces(): Surfaces {
+  const board = useMapSet(BOARD_MAPS);
+  const tape = useMapSet(TAPE_MAPS);
+
+  return useMemo(() => ({ board, tape }), [board, tape]);
+}
+
+function useMapSet(urls: Record<string, string>): MapSet {
+  const { map, aoMap, roughnessMap, normalMap } = useTexture(urls) as MapSet;
 
   // useLoader caches by URL, so the textures themselves are stable — but the
   // record wrapping them is rebuilt every render, and the per-slab tiling below
@@ -156,7 +180,7 @@ function useBoard(): BoardMaps {
 }
 
 /**
- * Millimetres the broad face of a slab spans in U and V.
+ * Which world axes the broad face of a slab runs U and V along.
  *
  * Every slab is a thin sheet, so its broad face is the one perpendicular to its
  * smallest axis. BoxGeometry pairs axes to UV per face and the pairing is not
@@ -166,30 +190,51 @@ function useBoard(): BoardMaps {
  * whenever the slab is taller than it is deep — which stretches the grain along
  * one axis until the board reads as wood.
  */
-function faceSpan([x, y, z]: readonly number[]): [number, number] {
+function faceAxes([x, y, z]: readonly number[]): [Axis, Axis] {
   const thinnest = Math.min(x, y, z);
-  if (thinnest === x) return [z, y];
-  if (thinnest === y) return [x, z];
-  return [x, y];
+  if (thinnest === x) return [Z, Y];
+  if (thinnest === y) return [X, Z];
+  return [X, Y];
 }
 
 /**
- * Copies the shared maps and tiles them to the slab's broad face, so grain
+ * Copies the shared maps and tiles them to the slab's broad face, so the scan
  * reads at one physical scale whether the panel is 316 mm across or 3 mm. Left
  * untiled, every face gets a single stretched copy and the thin edges smear.
  *
+ * A slab with a `grain` turns its scan a quarter turn when the face's U axis is
+ * not the one the material runs along — otherwise the tape on the walls comes
+ * out crossways to the tape on the floor, because those faces pair axes to UV
+ * differently.
+ *
  * Clones share the underlying `Source`, so the GPU upload is shared too — only
- * the repeat, which is a shader uniform, differs.
+ * the transform, which is a shader uniform, differs.
  */
-function tileToSlab(board: BoardMaps, size: readonly number[]): BoardMaps {
-  const [across, down] = faceSpan(size);
-  const tiled = {} as BoardMaps;
+function tileToSlab(
+  set: MapSet,
+  size: readonly number[],
+  tile: number,
+  grain?: Axis,
+): MapSet {
+  const [uAxis, vAxis] = faceAxes(size);
+  const turned = grain !== undefined && grain !== uAxis;
+  // Turning swaps which span drives which repeat: after a quarter turn the
+  // scan's own U axis is laid along the face's V.
+  const [across, down] = turned
+    ? [size[vAxis], size[uAxis]]
+    : [size[uAxis], size[vAxis]];
 
-  for (const key of Object.keys(board) as (keyof BoardMaps)[]) {
-    const texture = board[key].clone();
+  const tiled = {} as MapSet;
+
+  for (const key of Object.keys(set) as (keyof MapSet)[]) {
+    const texture = set[key].clone();
     texture.wrapS = RepeatWrapping;
     texture.wrapT = RepeatWrapping;
-    texture.repeat.set(across / TILE, down / TILE);
+    texture.repeat.set(across / tile, down / tile);
+    if (turned) {
+      texture.center.set(0.5, 0.5);
+      texture.rotation = Math.PI / 2;
+    }
     texture.colorSpace = key === "map" ? SRGBColorSpace : NoColorSpace;
     tiled[key] = texture;
   }
@@ -197,25 +242,31 @@ function tileToSlab(board: BoardMaps, size: readonly number[]): BoardMaps {
   return tiled;
 }
 
-function SlabMesh({ slab, board }: { slab: Slab; board: BoardMaps }) {
+function SlabMesh({ slab, surfaces }: { slab: Slab; surfaces: Surfaces }) {
   const surface = SURFACE[slab.tone];
   const translucent = (surface.opacity ?? 1) < 1;
+  const material: Material = slab.tone === "tape" ? "tape" : "board";
   // Primitives, not the array: `buildModel` rebuilds its slabs every render.
   const [sizeX, sizeY, sizeZ] = slab.size;
 
   const maps = useMemo(
     () =>
-      slab.tone === "tape" ? null : tileToSlab(board, [sizeX, sizeY, sizeZ]),
-    [board, slab.tone, sizeX, sizeY, sizeZ],
+      tileToSlab(
+        surfaces[material],
+        [sizeX, sizeY, sizeZ],
+        TILE[material],
+        slab.grain,
+      ),
+    [surfaces, material, sizeX, sizeY, sizeZ, slab.grain],
   );
 
   // Editing a dimension re-tiles, so the superseded clones have to go back.
-  useEffect(() => {
-    if (!maps) return;
-    return () => {
+  useEffect(
+    () => () => {
       for (const texture of Object.values(maps)) texture.dispose();
-    };
-  }, [maps]);
+    },
+    [maps],
+  );
 
   return (
     <mesh position={slab.position} rotation={slab.rotation}>
