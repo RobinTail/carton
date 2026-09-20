@@ -1,7 +1,8 @@
 # Carton
 
 Generates the flat cut-and-fold layout for a regular slotted container (RSC) from the
-interior dimensions you need to protect, and exports it as a 1:1 millimetre SVG.
+interior dimensions you need to protect, exports it as a 1:1 millimetre SVG, and shows the
+assembled box in 3D.
 
 | Layout                            | Render                              |
 | --------------------------------- | ----------------------------------- |
@@ -52,13 +53,32 @@ included when the toggle is on.
 Every input is mirrored into the URL query string, so a configuration can be bookmarked or
 shared. **Share link** copies the current URL to the clipboard.
 
+## 3D view
+
+The **3D** tab renders the folded box, orbitable by pointer or touch: walls up, bottom flaps
+folded and lapped in the right order, top flaps splayed 45° open, glue tab against the inside
+of the wall it closes against, and a strip of sealing tape along the bottom seam and halfway
+up the two walls it ends at.
+
+It reads the same `Layout` the flat drawing does, so the two can never disagree — the model
+is just those panel rectangles placed in space. Which pair of bottom flaps ends up on the
+outside follows from `min(L, W) / 2` above, and flips with the footprint.
+
+Everything 3D is code-split: `three`, `@react-three/fiber`, `@react-three/drei` and the
+paper and tape scans only download when the tab is first opened, so the flat view and the
+SVG export stay unaffected. WebGL support is probed before any of that is fetched, and a
+machine that cannot render gets a notice instead.
+
 ## Layout
 
 ```
 src/lib/geometry.ts     Pure geometry — params in, structured cuts/folds/panels out
+src/lib/model3d.ts      Pure fold — the same layout as positioned 3D slabs
 src/lib/exportSvg.ts    Standalone SVG serialisation and download (lazy-loaded)
 src/lib/urlState.ts     Query-string encoding of the parameters
-src/components/         FlatLayout (the SVG), ControlPanel, NumberField
+src/lib/webgl.ts        WebGL capability probe, free of any three.js import
+src/components/         FlatLayout (the SVG), Box3D (the canvas), ControlPanel, Tabs
+public/                 Paper and tape texture scans
 ```
 
 `pnpm lint` runs Oxlint; `pnpm build` type-checks and bundles.
