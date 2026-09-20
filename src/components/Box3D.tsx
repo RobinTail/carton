@@ -1,20 +1,59 @@
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas } from "@react-three/fiber";
-import { CameraControls, CameraControlsImpl } from "@react-three/drei";
-import { Sphere, Vector3, type PerspectiveCamera } from "three";
+import {
+  CameraControls,
+  CameraControlsImpl,
+  useTexture,
+} from "@react-three/drei";
+import {
+  NoColorSpace,
+  RepeatWrapping,
+  SRGBColorSpace,
+  Sphere,
+  Vector3,
+  type MeshStandardMaterialParameters,
+  type PerspectiveCamera,
+  type Texture,
+} from "three";
 import type { BoxParams, Layout } from "../lib/geometry.ts";
-import { buildModel, type BoxModel, type Slab } from "../lib/model3d.ts";
+import {
+  buildModel,
+  type BoxModel,
+  type Slab,
+  type Tone,
+} from "../lib/model3d.ts";
 import { PreviewNotice } from "./PreviewNotice.tsx";
 import "./Box3D.css";
 
 const ACTION = CameraControlsImpl.ACTION;
 
-const SURFACE = {
-  outer: { color: "#cda271", opacity: 1, roughness: 0.85 },
-  inner: { color: "#a87c4c", opacity: 1, roughness: 0.85 },
-  // Translucent tan, and glossier than board — it should read as film.
-  tape: { color: "#b07c3a", opacity: 0.55, roughness: 0.35 },
+/**
+ * Paper scan driving the board surface. No displacement map: displacement is a
+ * vertex effect, and a `boxGeometry` has only its eight corners to move, so it
+ * would skew the slab rather than add any relief. The normal map does that job
+ * on flat geometry.
+ */
+const BOARD_MAPS = {
+  map: "/paper_0025_color_1k.jpg",
+  aoMap: "/paper_0025_ao_1k.jpg",
+  roughnessMap: "/paper_0025_roughness_1k.jpg",
+  normalMap: "/paper_0025_normal_opengl_1k.jpg",
 } as const;
+
+type BoardMaps = Record<keyof typeof BOARD_MAPS, Texture>;
+
+/** Millimetres of board covered by one tile of the paper texture. */
+const TILE = 150;
+
+// `color` multiplies the albedo map, so these tint the (pale) paper scan to
+// kraft. The two board tones stay well apart: the contrast between them is what
+// shows which bottom flap laps over which.
+const SURFACE: Record<Tone, MeshStandardMaterialParameters> = {
+  outer: { color: "#f1ece7", roughness: 0.95 },
+  inner: { color: "#e6dcd1", roughness: 0.95 },
+  // Translucent tan, and glossier than board — it should read as film.
+  tape: { color: "#684714", opacity: 0.35, roughness: 0.15 },
+};
 
 const FOV = 40;
 /**
@@ -70,9 +109,12 @@ export function Box3D({
           color="#ffeedd"
         />
 
-        {model.slabs.map((slab) => (
-          <SlabMesh key={slab.id} slab={slab} />
-        ))}
+        {/* The board suspends on its textures. Nothing renders until they land,
+            so the box never appears untextured and then pops; the fallback has
+            to be scene content, hence null rather than a message. */}
+        <Suspense fallback={null}>
+          <Board model={model} />
+        </Suspense>
 
         <Frame model={model} />
       </Canvas>
@@ -80,19 +122,108 @@ export function Box3D({
   );
 }
 
-function SlabMesh({ slab }: { slab: Slab }) {
+/** Every slab of the box, sharing one set of loaded board maps. */
+function Board({ model }: { model: BoxModel }) {
+  const board = useBoard();
+
+  return (
+    <>
+      {model.slabs.map((slab) => (
+        <SlabMesh key={slab.id} slab={slab} board={board} />
+      ))}
+    </>
+  );
+}
+
+/**
+ * Loads the board maps. Must run inside the Canvas: `useTexture` reaches for
+ * the renderer through `useThree`. Suspends until every map has arrived, and a
+ * missing file rejects into the error boundary around `Box3D` rather than
+ * failing silently to the console.
+ */
+function useBoard(): BoardMaps {
+  const { map, aoMap, roughnessMap, normalMap } = useTexture(
+    BOARD_MAPS,
+  ) as BoardMaps;
+
+  // useLoader caches by URL, so the textures themselves are stable — but the
+  // record wrapping them is rebuilt every render, and the per-slab tiling below
+  // memoises against it.
+  return useMemo(
+    () => ({ map, aoMap, roughnessMap, normalMap }),
+    [map, aoMap, roughnessMap, normalMap],
+  );
+}
+
+/**
+ * Millimetres the broad face of a slab spans in U and V.
+ *
+ * Every slab is a thin sheet, so its broad face is the one perpendicular to its
+ * smallest axis. BoxGeometry pairs axes to UV per face and the pairing is not
+ * the same for all three: `±X` runs U along z and V along y, `±Y` runs U along
+ * x and V along z, `±Z` runs U along x and V along y. Taking the two largest
+ * dimensions in size order matches that only by luck, and gets `±X` backwards
+ * whenever the slab is taller than it is deep — which stretches the grain along
+ * one axis until the board reads as wood.
+ */
+function faceSpan([x, y, z]: readonly number[]): [number, number] {
+  const thinnest = Math.min(x, y, z);
+  if (thinnest === x) return [z, y];
+  if (thinnest === y) return [x, z];
+  return [x, y];
+}
+
+/**
+ * Copies the shared maps and tiles them to the slab's broad face, so grain
+ * reads at one physical scale whether the panel is 316 mm across or 3 mm. Left
+ * untiled, every face gets a single stretched copy and the thin edges smear.
+ *
+ * Clones share the underlying `Source`, so the GPU upload is shared too — only
+ * the repeat, which is a shader uniform, differs.
+ */
+function tileToSlab(board: BoardMaps, size: readonly number[]): BoardMaps {
+  const [across, down] = faceSpan(size);
+  const tiled = {} as BoardMaps;
+
+  for (const key of Object.keys(board) as (keyof BoardMaps)[]) {
+    const texture = board[key].clone();
+    texture.wrapS = RepeatWrapping;
+    texture.wrapT = RepeatWrapping;
+    texture.repeat.set(across / TILE, down / TILE);
+    texture.colorSpace = key === "map" ? SRGBColorSpace : NoColorSpace;
+    tiled[key] = texture;
+  }
+
+  return tiled;
+}
+
+function SlabMesh({ slab, board }: { slab: Slab; board: BoardMaps }) {
   const surface = SURFACE[slab.tone];
-  const translucent = surface.opacity < 1;
+  const translucent = (surface.opacity ?? 1) < 1;
+  // Primitives, not the array: `buildModel` rebuilds its slabs every render.
+  const [sizeX, sizeY, sizeZ] = slab.size;
+
+  const maps = useMemo(
+    () =>
+      slab.tone === "tape" ? null : tileToSlab(board, [sizeX, sizeY, sizeZ]),
+    [board, slab.tone, sizeX, sizeY, sizeZ],
+  );
+
+  // Editing a dimension re-tiles, so the superseded clones have to go back.
+  useEffect(() => {
+    if (!maps) return;
+    return () => {
+      for (const texture of Object.values(maps)) texture.dispose();
+    };
+  }, [maps]);
 
   return (
     <mesh position={slab.position} rotation={slab.rotation}>
       <boxGeometry args={slab.size} />
       <meshStandardMaterial
-        color={surface.color}
-        roughness={surface.roughness}
-        metalness={0}
+        {...surface}
+        {...maps}
         transparent={translucent}
-        opacity={surface.opacity}
         // Without this a translucent slab occludes its own far side, so the
         // strip darkens wherever the camera sees through two of its faces.
         depthWrite={!translucent}
